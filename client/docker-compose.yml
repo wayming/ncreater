@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./novels:/app/novels
+      - ./scripts:/app/scripts
+    environment:
+      WEAVIATE_URL: "http://192.168.1.11:8080"
+      LLM_URL: "http://192.168.1.11:5000"
+    deploy:
+      resources:
+        reservations:
+          memory: 4G
+
+  importer:
+    build: .
+    volumes:
+      - ./novels:/app/novels
+      - ./scripts:/app/scripts
+    environment:
+      WEAVIATE_URL: "http://192.168.1.11:8080"
+    command: python /app/scripts/import_data.py
+    deploy:
+      resources:
+        reservations:
+          memory: 4G

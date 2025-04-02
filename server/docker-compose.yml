@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  weaviate:
+    image: semitechnologies/weaviate:1.24.0
+    ports:
+      - "8080:8080"
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+    volumes:
+      - ./weaviate-data:/var/lib/weaviate
+    deploy:
+      resources:
+        reservations:
+          memory: 8G
+
+  llm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "5000:5000"
+    environment:
+      MODEL: /models/OLMo-12B-Instruct
+      QUANTIZATION: awq
+      HOST: 0.0.0.0
+      DISABLE_API_KEY: "true"
+    volumes:
+      - ./models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+          memory: 24G
