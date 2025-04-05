@@ -79,7 +79,7 @@ def insert_rag_context(messages, rag_context):
     for i in range(len(messages) - 1, -1, -1):
         if messages[i]['role'] == 'user':
             # Insert RAG context just before the last user question
-            messages.insert(i, {'role': 'user', 'content': rag_context})
+            messages.insert(i, {'role': 'assistant', 'content': rag_context})
             break
     return messages
 
@@ -99,17 +99,17 @@ async def handle_rag_request(request: Request):
         logger.info(f"[handle_rag_request]enhanced request:\n{data}")
         async with httpx.AsyncClient() as http_client:
             ollama_response = await http_client.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json={**data},
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json=data,
                 timeout=60.0
             )
             ollama_response.raise_for_status()
             
-            async def generate():
+            async def chat_response():
                 async for chunk in ollama_response.aiter_bytes():
                     yield chunk
                     
-            return StreamingResponse(generate())
+            return StreamingResponse(chat_response())
     except Exception as e:
         logger.error(f"RAG processing failed: {str(e)}")
         raise
