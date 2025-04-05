@@ -31,12 +31,18 @@ logger.info(f"Connecting to Ollama at {OLLAMA_BASE_URL}")
 logger.info(f"Connecting to Weaviate at {WEAVIATE_URL}")
 
 # Initialize Weaviate client (v4 syntax)
+WEAVIATE_GRPC_PORT = os.getenv("WEAVIATE_GRPC_PORT", "50051")  # Default gRPC port
+logger.info(f"Connecting to Weaviate gRPC Port {WEAVIATE_GRPC_PORT}")
+
 try:
     weaviate_client = WeaviateClient(
-        connection_params=weaviate.connect.ConnectionParams.from_url(WEAVIATE_URL)
+        connection_params=weaviate.connect.ConnectionParams.from_url(
+            url=WEAVIATE_URL,
+            grpc_port=WEAVIATE_GRPC_PORT  # Required in v4
+        )
     )
     client = weaviate_client.connect()
-    logger.info("Successfully connected to Weaviate")
+    logger.info(f"Successfully connected to Weaviate at {WEAVIATE_URL} (gRPC: {WEAVIATE_GRPC_PORT})")
 except Exception as e:
     logger.error(f"Weaviate connection failed: {str(e)}")
     raise
@@ -58,30 +64,43 @@ async def startup():
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy(request: Request, path: str):
+    logger.info(f"[api_route]path: {path}")
+
     try:
-        if path == "api/generate":
+        if path == "api/chat":
             return await handle_rag_request(request)
         return await forward_request(request, path)
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def insert_rag_context(messages, rag_context):
+    # Find the index of the last user message (which is the last question)
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i]['role'] == 'user':
+            # Insert RAG context just before the last user question
+            messages.insert(i, {'role': 'user', 'content': rag_context})
+            break
+    return messages
+
 async def handle_rag_request(request: Request):
     data = await request.json()
     user_prompt = data.get("prompt", "")
-    
+    logger.info(f"[handle_rag_request]data: {data}")
+    logger.info(f"[handle_rag_request]user_prompt: {user_prompt}")
     try:
-        results = client.collections.get("Document").query.near_text(
-            query=user_prompt,
-            limit=3
-        )
-        context = "\n".join([obj.properties["content"] for obj in results.objects])
-        enhanced_prompt = f"Context:\n{context}\n\nQuestion: {user_prompt}"
-        
+        # results = client.collections.get("Document").query.near_text(
+        #     query=user_prompt,
+        #     limit=3
+        # )
+        # context = "\n".join([obj.properties["content"] for obj in results.objects])
+        rag_context = f"rag context"
+        insert_rag_context(data['messages'], rag_context)
+        logger.info(f"[handle_rag_request]enhanced request:\n{data}")
         async with httpx.AsyncClient() as http_client:
             ollama_response = await http_client.post(
                 f"{OLLAMA_BASE_URL}/api/generate",
-                json={**data, "prompt": enhanced_prompt},
+                json={**data},
                 timeout=60.0
             )
             ollama_response.raise_for_status()
@@ -102,6 +121,9 @@ async def forward_request(request: Request, path: str):
             headers = dict(request.headers)
             headers.pop("host", None)
             
+            logger.info(f"[forward_request]url: {url}")
+            logger.info(f"[forward_request]headers: {headers}")
+            logger.info(f"[forward_request]request: {request.method} {request.body()}")
             if request.method == "GET":
                 response = await http_client.get(url, headers=headers)
             elif request.method == "POST":
