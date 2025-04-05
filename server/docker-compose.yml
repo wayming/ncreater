@@ -26,7 +26,25 @@ services:
       # gRPC configuration
       GRPC_PORT: "50051"
 
-
+  proxy:
+    build: .
+    image: rag_proxy
+    ports:
+      - "8000:8000"
+    environment:
+      - WEAVIATE_URL=http://weaviate:8080
+      - WEAVIATE_GRPC_PORT=50051
+      - OLLAMA_BASE_URL=http://192.168.1.11:11434
+    depends_on:
+      - weaviate
+      - ollama
+    networks:
+      - rag_network
+    restart: unless-stopped
+  
+  networks:
+    rag_network:
+      driver: bridge
   # llm:
   #   image: vllm/vllm-openai:latest
   #   ports:
