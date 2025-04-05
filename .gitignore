@@ -1,1 +1,10 @@
 .webui_secret_key
+server/weaviate-data
+server/weaviate_data/modules.db
+server/weaviate_data/schema.db
+server/weaviate_data/migration1.19.filter2search.skip.flag
+server/weaviate_data/migration1.19.filter2search.state
+server/weaviate_data/migration1.22.fs.hierarchy
+server/weaviate_data/classifications.db
+server/weaviate_data/raft/raft.db
+server/weaviate_data/raft/db_users/users.json

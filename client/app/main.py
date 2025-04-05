@@ -22,7 +22,7 @@ async def ask(question: str):
         response = await client.post(
             f"{LLM_URL}/generate",
             json={
-                "prompt": f"根据以下内容回答：{contexts}\n\n问题：{question}",
+                "prompt": f"根据以下内容回答：{contexts}\n\n问题:{question}",
                 "max_tokens": 300
             }
         )

@@ -2,34 +2,46 @@ version: '3.8'
 
 services:
   weaviate:
-    image: semitechnologies/weaviate:1.24.0
+    command:
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8080'
+    - --scheme
+    - http
+    image: cr.weaviate.io/semitechnologies/weaviate:1.30.0
     ports:
-      - "8080:8080"
-    environment:
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
-      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+    - 8080:8080
+    - 50051:50051
     volumes:
-      - ./weaviate-data:/var/lib/weaviate
-    deploy:
-      resources:
-        reservations:
-          memory: 8G
+    - ./weaviate_data:/var/lib/weaviate
+    restart: on-failure:0
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      ENABLE_MODULES: ''
+      CLUSTER_HOSTNAME: 'node1'
+      # gRPC configuration
+      GRPC_PORT: "50051"
 
-  llm:
-    image: vllm/vllm-openai:latest
-    ports:
-      - "5000:5000"
-    environment:
-      MODEL: /models/OLMo-12B-Instruct
-      QUANTIZATION: awq
-      HOST: 0.0.0.0
-      DISABLE_API_KEY: "true"
-    volumes:
-      - ./models:/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-          memory: 24G
+
+  # llm:
+  #   image: vllm/vllm-openai:latest
+  #   ports:
+  #     - "5000:5000"
+  #   environment:
+  #     MODEL: /models/OLMo-12B-Instruct
+  #     QUANTIZATION: awq
+  #     HOST: 0.0.0.0
+  #     DISABLE_API_KEY: "true"
+  #   volumes:
+  #     - ./models:/models
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #         memory: 24G
