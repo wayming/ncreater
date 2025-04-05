@@ -1,0 +1,48 @@
+# Use official Ubuntu base image
+FROM ubuntu:24.04
+
+# Set non-interactive mode to avoid prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies (curl, git, etc.)
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    wget \
+    ca-certificates \
+    build-essential \
+    python3 \
+    python3-pip \
+    python3-dev \
+    python3.12-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Ollama (replace with actual installation script for Ollama)
+RUN curl -fsSL https://ollama.com/install.sh | sh
+
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+
+# (Optional) Install specific models for Ollama if necessary.
+# You might need to replace this with the correct command for downloading a model.
+# RUN ollama install <model-name>
+
+RUN pip3 install numpy pandas torch
+
+ENV OLLAMA_MODELS=/models
+ENV OLLAMA_HOST=0.0.0.0
+ENV OLLAMA_DEBUG=1
+ENV CUDA_VISIBLE_DEVICES=0
+RUN echo 'export OLLAMA_MODELS=/models' >> /root/.bashrc
+RUN echo 'export OLLAMA_HOST=0.0.0.0' >> /root/.bashrc
+RUN echo 'export OLLAMA_DEBUG=1' >> /root/.bashrc
+RUN echo 'export CUDA_VISIBLE_DEVICES=0' >> /root/.bashrc
+
+WORKDIR /app
+
+# Expose any necessary ports (if Ollama requires a port)
+EXPOSE 11434
+
+# Command to start Ollama (replace with the actual command for starting Ollama)
+CMD ["ollama", "start"]

@@ -25,16 +25,41 @@ services:
       CLUSTER_HOSTNAME: 'node1'
       # gRPC configuration
       GRPC_PORT: "50051"
+    networks:
+      - rag_network
+
+  ollama:
+    container_name: ollama
+    image: ollama
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
+    ports:
+      - "11434:11434" 
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            capabilities: ["gpu"]
+            count: all
+    volumes:
+      - /home/way/Workspace/ollama/models:/models
+    restart: always
+    networks:
+      - rag_network
 
   proxy:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
     image: rag_proxy
     ports:
       - "8000:8000"
     environment:
       - WEAVIATE_URL=http://weaviate:8080
       - WEAVIATE_GRPC_PORT=50051
-      - OLLAMA_BASE_URL=http://192.168.1.11:11434
+      - OLLAMA_BASE_URL=http://ollama:11434
     depends_on:
       - weaviate
       - ollama
@@ -42,24 +67,7 @@ services:
       - rag_network
     restart: unless-stopped
   
-  networks:
-    rag_network:
-      driver: bridge
-  # llm:
-  #   image: vllm/vllm-openai:latest
-  #   ports:
-  #     - "5000:5000"
-  #   environment:
-  #     MODEL: /models/OLMo-12B-Instruct
-  #     QUANTIZATION: awq
-  #     HOST: 0.0.0.0
-  #     DISABLE_API_KEY: "true"
-  #   volumes:
-  #     - ./models:/models
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #         memory: 24G
+networks:
+  rag_network:
+    driver: bridge
+  
