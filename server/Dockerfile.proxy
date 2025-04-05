@@ -1,0 +1,28 @@
+FROM python:3.9-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc python3-dev curl && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip cache purge
+
+COPY proxy.py .
+# COPY healthcheck.sh /usr/local/bin/
+# RUN chmod +x /usr/local/bin/healthcheck.sh
+
+# HEALTHCHECK --interval=10s --timeout=3s --start-period=5s \
+#   CMD healthcheck.sh || exit 1
+
+ENV PYTHONUNBUFFERED=1 \
+    MAX_RETRIES=5 \
+    RETRY_DELAY=2 \
+    OLLAMA_BASE_URL=http://ollama:11434 \
+    WEAVIATE_URL=http://weaviate:8080
+
+USER 1001
+
+CMD ["sh", "-c", "for i in $(seq 1 $MAX_RETRIES); do gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 proxy:app && break || sleep $RETRY_DELAY; done"]
