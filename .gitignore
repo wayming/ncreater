@@ -8,3 +8,4 @@ server/weaviate_data/migration1.22.fs.hierarchy
 server/weaviate_data/classifications.db
 server/weaviate_data/raft/raft.db
 server/weaviate_data/raft/db_users/users.json
+server/weaviate_data/textchunk

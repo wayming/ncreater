@@ -10,6 +10,7 @@ COPY requirements.txt /app
 
 RUN pip install --upgrade huggingface_hub
 RUN pip install --upgrade sentence-transformers
+RUN pip install --upgrade weaviate-client
 # Install the required dependencies
 RUN pip install --no-cache-dir -r /app/requirements.txt
 

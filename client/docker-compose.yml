@@ -23,8 +23,17 @@ services:
       dockerfile: Dockerfile.import
     environment:
       - WEAVIATE_URL=http://192.168.1.11:8080
+      - WEAVIATE_GRPC_PORT=50051
       - DATA_PATH=/app/texts_processed
     volumes:
       - ./texts_processed:/app/texts_processed
-    restart: on-failure
-    command: python weaviate_importer.py
+    # restart: on-failure
+    command: tail -f /dev/null
+    # command: python weaviate_importer.py
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            capabilities: ["gpu"]
+            count: all

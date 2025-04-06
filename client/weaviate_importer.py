@@ -2,16 +2,38 @@ import json
 import os
 from tqdm import tqdm
 import weaviate
+from weaviate import WeaviateClient
 from sentence_transformers import SentenceTransformer
+import logging
+
+# Initialize logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class WeaviateImporter:
-    def __init__(self, weaviate_url: str, data_path: str):
-        self.client = weaviate.Client(weaviate_url)
+    def __init__(self, weaviate_url: str, grpc_port: str, data_path: str):
+        self.weaviate_url = weaviate_url
+        self.grpc_port = grpc_port
         self.encoder = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2", device='cuda')
         self.batch_size = 50
-        self.setup_schema()
         self.data_path = data_path
+        self.client = None
 
+    def connect(self):
+        try:
+            self.client = WeaviateClient(
+                connection_params=weaviate.connect.ConnectionParams.from_url(
+                    url=self.weaviate_url,
+                    grpc_port=self.grpc_port  # Required in v4
+                )
+            )
+            client = self.client .connect()
+            logger.info(f"Successfully connected to Weaviate at {self.weaviate_url} (gRPC: {self.grpc_port})")
+        except Exception as e:
+            logger.error(f"Weaviate connection failed: {str(e)}")
+            raise
+        
     def setup_schema(self):
         schema = {
             "classes": [{
@@ -68,7 +90,10 @@ class WeaviateImporter:
 if __name__ == "__main__":
     # Get the Weaviate URL and the data path from environment variables
     weaviate_url = os.getenv("WEAVIATE_URL", "http://localhost:8080")  # Default if not provided
+    grpc_port = os.getenv("WEAVIATE_GRPC_PORT", "50051")  # Default gRPC port
     data_path = os.getenv("DATA_PATH", "./processed_data")  # Default if not provided
     
-    importer = WeaviateImporter(weaviate_url, data_path)
+    importer = WeaviateImporter(weaviate_url, grpc_port, data_path)
+    importer.connect()
+    importer.setup_schema()
     importer.import_data()
