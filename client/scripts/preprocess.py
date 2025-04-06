@@ -1,68 +1,53 @@
 import os
 import json
 from pathlib import Path
-from sentence_splitter import SentenceSplitter
 from tqdm import tqdm
 import re
 
 class TextPreprocessor:
-    def __init__(self):
-        self.splitter = SentenceSplitter(language='zh')
-        self.chunk_size = 500  # Target chunk size in characters
-        self.min_chunk = 100   # Minimum chunk size
-
-    def clean_text(self, text: str) -> str:
+    # Remve special characters
+    # Return lines as a list
+    def clean_text(self, lines: list[str]) -> list[str]:
         """Remove unwanted characters and normalize text"""
-        text = re.sub(r'\r\n', '\n', text)  # Standardize line breaks
-        text = re.sub(r'[^\w\s，。！？、：；（）《》【】\n]', '', text)  # Remove special chars
-        return text.strip()
-
-    def chunk_text(self, text: str, title: str) -> list[dict]:
-        """Split text into semantically coherent chunks"""
-        chunks = []
-        chapters = re.split(r'\n第[一二三四五六七八九十百]+章', text)[1:]  # Chinese chapter splitting
+        cleaned_lines = []
         
-        for chap_num, chapter in enumerate(chapters, 1):
-            sentences = self.splitter.split(chapter)
-            current_chunk = ""
-            
-            for sent in sentences:
-                if len(current_chunk) + len(sent) <= self.chunk_size:
-                    current_chunk += sent
-                else:
-                    if len(current_chunk) >= self.min_chunk:
-                        chunks.append(self._create_chunk(current_chunk, title, chap_num))
-                    current_chunk = sent
-            
-            if current_chunk and len(current_chunk) >= self.min_chunk:
-                chunks.append(self._create_chunk(current_chunk, title, chap_num))
-        
-        return chunks
+        for line in lines:
+            line = re.sub(r'\r\n', '\n', line)  # Standardize line breaks
+            line = re.sub(r'[^\w\s，。！？、：；（）《》【】\n]', '', line)  # Remove special chars
+            cleaned_lines.append(line)
+        return cleaned_lines
 
-    def _create_chunk(self, text: str, title: str, chap_num: int) -> dict:
-        return {
-            "content": text.strip(),
-            "text": title,
-            "chapter": f"第{chap_num}章",
-            "word_count": len(text),
-            "source": "txt"
-        }
 
-def process_all_texts(input_dir: str, output_file: str):
+    def sliding_window(self, lines: list[str], window_size=10, stride=5) -> list[str]:
+        windows = []
+        for i in range(0, len(lines) - window_size + 1, stride):
+            window = lines[i:i + window_size]
+            windows.append(window)
+        return windows
+
+def process_all_files(input_dir: str, output_dir: str):
     processor = TextPreprocessor()
-    all_chunks = []
+    for novel_id in os.listdir(input_dir):
+        chunks = []
+        novel_path = os.path.join(input_dir, novel_id)
+        if os.path.isdir(novel_path):
+            for text_file in os.listdir(novel_path):
+                text_file_path = os.path.join(novel_path, text_file)
+                if os.path.isfile(text_file_path):
+                    lines = []
+                    with open(text_file_path, 'r', encoding='utf-8') as file:
+                        lines = file.readlines()
+                    lines = [line.strip() for line in lines if line.strip()]
+                    lines = processor.clean_text(lines)
+                    windows = processor.sliding_window(lines)
+                    chunks.extend([" ".join(window) for window in windows])
     
-    for text_file in tqdm(list(Path(input_dir).glob("*.txt"))):
-        text = text_file.read_text(encoding='utf-8')
-        cleaned = processor.clean_text(text)
-        chunks = processor.chunk_text(cleaned, text_file.stem)
-        all_chunks.extend(chunks)
-    
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(all_chunks, f, ensure_ascii=False, indent=2)
+            with open(f"{output_dir}/{novel_id}.json", 'w', encoding='utf-8') as f:
+                json.dump(chunks, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
-    process_all_texts(
+    process_all_files(
         input_dir="./texts_raw",
-        output_file="./processed_data/text_chunks.json"
+        output_dir="./texts_processed"
     )
+    
