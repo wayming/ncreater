@@ -74,28 +74,29 @@ async def proxy(request: Request, path: str):
         logger.error(f"Error processing request: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def insert_rag_context(messages, rag_context):
-    # Find the index of the last user message (which is the last question)
-    for i in range(len(messages) - 1, -1, -1):
-        if messages[i]['role'] == 'user':
-            # Insert RAG context just before the last user question
-            messages.insert(i, {'role': 'assistant', 'content': rag_context})
-            break
-    return messages
+# def insert_rag_context(messages, rag_context):
+#     # Find the index of the last user message (which is the last question)
+#     for i in range(len(messages) - 1, -1, -1):
+#         if messages[i]['role'] == 'user':
+#             # Insert RAG context just before the last user question
+#             messages.insert(i, {'role': 'assistant', 'content': rag_context})
+#             break
+#     return messages
 
 async def handle_rag_request(request: Request):
     data = await request.json()
-    user_prompt = data.get("prompt", "")
+    messages = data['messages']
+    orig_user_prompt = messages[-1]['content']
     logger.info(f"[handle_rag_request]data: {data}")
-    logger.info(f"[handle_rag_request]user_prompt: {user_prompt}")
+    logger.info(f"[handle_rag_request]user_prompt: {orig_user_prompt}")
     try:
         # results = client.collections.get("Document").query.near_text(
-        #     query=user_prompt,
+        #     query=orig_user_prompt,
         #     limit=3
         # )
         # context = "\n".join([obj.properties["content"] for obj in results.objects])
-        rag_context = f"rag context"
-        insert_rag_context(data['messages'], rag_context)
+        context = f"rag context"
+        messages[-1]['content'] = f"根据以下文章内容回答问题：\n\n文章内容：{context}\n\n问题：{orig_user_prompt}\n答案："
         logger.info(f"[handle_rag_request]enhanced request:\n{data}")
         async with httpx.AsyncClient() as http_client:
             ollama_response = await http_client.post(

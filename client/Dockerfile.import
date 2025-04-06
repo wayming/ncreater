@@ -1,0 +1,21 @@
+# Use an official Python runtime as the base image
+FROM python:3.8-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the current directory contents into the container at /app
+COPY weaviate_importer.py /app
+COPY requirements.txt /app
+
+RUN pip install --upgrade huggingface_hub
+RUN pip install --upgrade sentence-transformers
+# Install the required dependencies
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Set environment variables (default values, can be overridden at runtime)
+ENV WEAVIATE_URL=http://localhost:8080
+ENV DATA_PATH=./texts_processed
+
+# Run the script
+CMD ["python", "weaviate_importer.py"]
