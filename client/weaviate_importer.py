@@ -2,6 +2,7 @@ import json
 import os
 from tqdm import tqdm
 import weaviate
+from weaviate.classes.config import Property, DataType
 from weaviate import WeaviateClient
 from sentence_transformers import SentenceTransformer
 import logging
@@ -12,41 +13,28 @@ logger = logging.getLogger(__name__)
 
 
 class WeaviateImporter:
-    def __init__(self, weaviate_url: str, grpc_port: str, data_path: str):
-        self.weaviate_url = weaviate_url
-        self.grpc_port = grpc_port
+    def __init__(self, client: WeaviateClient, data_path: str):
         self.encoder = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2", device='cuda')
         self.batch_size = 50
         self.data_path = data_path
-        self.client = None
+        self.client = client
 
-    def connect(self):
-        try:
-            self.client = WeaviateClient(
-                connection_params=weaviate.connect.ConnectionParams.from_url(
-                    url=self.weaviate_url,
-                    grpc_port=self.grpc_port  # Required in v4
-                )
-            )
-            client = self.client .connect()
-            logger.info(f"Successfully connected to Weaviate at {self.weaviate_url} (gRPC: {self.grpc_port})")
-        except Exception as e:
-            logger.error(f"Weaviate connection failed: {str(e)}")
-            raise
-        
     def setup_schema(self):
-        schema = {
-            "classes": [{
-                "class": "TextChunk",
-                "properties": [
-                    {"name": "content", "dataType": ["text"]},
-                    {"name": "word_count", "dataType": ["int"]},
-                    {"name": "source", "dataType": ["string"]}
-                ],
-                "vectorizer": "none"
-            }]
-        }
-        self.client.schema.create(schema)
+        collection = self.client.collections.get('TextChunk')
+
+        if not collection:
+            self.client.collections.create(
+                name="TextChunk",
+                properties=[
+                    Property(name="content", data_type=DataType.TEXT),
+                    Property(name="word_count", data_type=DataType.INT),
+                    Property(name="source", data_type=DataType.TEXT)
+                ]
+            )
+            print("Collection 'TextChunk' created.")
+        else:
+            print("Collection 'TextChunk' already exists.")
+
 
     def import_data(self):
         # Get all JSON files in the directory
@@ -69,13 +57,17 @@ class WeaviateImporter:
         print(f"Importing {total} chunks from {json_file}...")
 
         # Batch process the chunks
-        with self.client.batch(batch_size=self.batch_size) as batch:
+        with self.client.batch.fixed_size(batch_size=self.batch_size, concurrent_requests=4) as batch:
             for i, chunk in enumerate(chunks):
                 try:
                     vector = self.encoder.encode(chunk)
-                    batch.add_data_object(
-                        data_object={"content": chunk, "word_count": len(chunk.split()), "source": json_file},
-                        class_name="TextChunk",
+                    batch.add_data(
+                        collection="TextChunk",
+                        properties={
+                            "content": chunk,
+                            "word_count": len(chunk.split()),
+                            "source": json_file
+                        },
                         vector=vector.tolist()
                     )
 
@@ -86,14 +78,44 @@ class WeaviateImporter:
                 except Exception as e:
                     print(f"Error processing chunk {i} from {json_file}: {str(e)}")
                     continue
+def main():
+    client = None
+    try:
+        # Try to connect to Weaviate
+        with weaviate.connect_to_custom(
+            http_host=os.getenv("WEAVIATE_HTTP_HOST", "192.168.1.11"),
+            http_port=os.getenv("WEAVIATE_HTTP_PORT", "8080"),
+            http_secure=False,  # Use True for HTTPS
+            grpc_host=os.getenv("WEAVIATE_GRPC_HOST", "192.168.1.11"),
+            grpc_port=os.getenv("WEAVIATE_GRPC_PORT", "50051"),
+            grpc_secure=False  # Use True for secure gRPC
+        ) as client:
+
+            # Check if connection is ready
+            if client.is_ready():
+                logger.info(f"Successfully connected to Weaviate {client.get_meta()})")
+            else:
+                raise
+            # Initialize importer and setup schema (will only run if connection is successful)
+            importer = WeaviateImporter(client, os.getenv("DATA_PATH", "./processed_data"))
+            importer.setup_schema()
+            importer.import_data()
+
+    except weaviate.exceptions.ConnectionError as conn_err:
+        # Catch connection-related errors specifically
+        logger.error(f"Weaviate connection failed: {str(conn_err)}")
+        raise  # Re-raise the connection error to notify the caller
+
+    except Exception as e:
+        # Let all other exceptions propagate
+        logger.error(f"An error occurred: {str(e)}")
+        raise
+
+    finally:
+        # Always ensure the client is closed if it was successfully created
+        if client:
+            client.close()
+            logger.info("Weaviate client connection closed.")
 
 if __name__ == "__main__":
-    # Get the Weaviate URL and the data path from environment variables
-    weaviate_url = os.getenv("WEAVIATE_URL", "http://localhost:8080")  # Default if not provided
-    grpc_port = os.getenv("WEAVIATE_GRPC_PORT", "50051")  # Default gRPC port
-    data_path = os.getenv("DATA_PATH", "./processed_data")  # Default if not provided
-    
-    importer = WeaviateImporter(weaviate_url, grpc_port, data_path)
-    importer.connect()
-    importer.setup_schema()
-    importer.import_data()
+    main()

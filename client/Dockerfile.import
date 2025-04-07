@@ -14,9 +14,9 @@ RUN pip install --upgrade weaviate-client
 # Install the required dependencies
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Set environment variables (default values, can be overridden at runtime)
-ENV WEAVIATE_URL=http://localhost:8080
-ENV DATA_PATH=./texts_processed
+# # Set environment variables (default values, can be overridden at runtime)
+# ENV WEAVIATE_URL=http://localhost:8080
+# ENV DATA_PATH=./texts_processed
 
 # Run the script
 CMD ["python", "weaviate_importer.py"]
