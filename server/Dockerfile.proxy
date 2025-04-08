@@ -19,9 +19,7 @@ COPY proxy.py .
 
 ENV PYTHONUNBUFFERED=1 \
     MAX_RETRIES=5 \
-    RETRY_DELAY=2 \
-    OLLAMA_BASE_URL=http://ollama:11434 \
-    WEAVIATE_URL=http://weaviate:8080
+    RETRY_DELAY=2
 
 USER 1001
 

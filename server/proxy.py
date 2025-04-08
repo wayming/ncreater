@@ -8,26 +8,10 @@ from dotenv import load_dotenv
 import logging
 from contextlib import asynccontextmanager
 
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+logger = None
+ollama_url = None
 # Load environment variables
 load_dotenv()
-
-app = FastAPI()
-
-# Get environment variables with validation
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL")
-WEAVIATE_URL = os.getenv("WEAVIATE_URL")
-
-if not OLLAMA_BASE_URL or not WEAVIATE_URL:
-    raise ValueError("""
-    Missing required environment variables:
-    - OLLAMA_BASE_URL must be set
-    - WEAVIATE_URL must be set
-    """)
-
 
 weaviate_client = None
 def weaviate_connect() -> WeaviateClient:
@@ -36,7 +20,7 @@ def weaviate_connect() -> WeaviateClient:
     """    
     try:
         logger.info(f"Connecting to Weaviate")
-
+        client = None
         if client is None:
             # Initialize the Weaviate client (this is just an example URL)
             client = weaviate.connect_to_custom(
@@ -61,11 +45,17 @@ def weaviate_connect() -> WeaviateClient:
     return client
 
 async def startup():
+    global logger
+    # Initialize logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    global ollama_url
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     global weaviate_client
     weaviate_client = weaviate_connect()
 
     # Test Ollama connection
-    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     logger.info(f"Connecting to Ollama at {ollama_url}")
     try:
         async with httpx.AsyncClient() as test_client:
@@ -87,6 +77,7 @@ async def lifespan(app: FastAPI):
     yield
     shutown()
 
+app = FastAPI(lifespan=lifespan)
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy(request: Request, path: str):
@@ -118,7 +109,7 @@ async def handle_rag_request(request: Request):
         logger.info(f"[handle_rag_request]enhanced request:\n{data}")
         async with httpx.AsyncClient() as http_client:
             ollama_response = await http_client.post(
-                f"{OLLAMA_BASE_URL}/api/chat",
+                f"{ollama_url}/api/chat",
                 json=data,
                 timeout=60.0
             )
@@ -136,7 +127,7 @@ async def handle_rag_request(request: Request):
 async def forward_request(request: Request, path: str):
     try:
         async with httpx.AsyncClient() as http_client:
-            url = f"{OLLAMA_BASE_URL}/{path}"
+            url = f"{ollama_url}/{path}"
             headers = dict(request.headers)
             headers.pop("host", None)
             
@@ -173,7 +164,7 @@ async def health():
 async def check_ollama_health():
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5.0)
+            response = await client.get(f"{ollama_url}/api/tags", timeout=5.0)
             return response.status_code == 200
     except:
         return False
