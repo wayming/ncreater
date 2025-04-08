@@ -1,21 +1,6 @@
 version: '3.8'
 
 services:
-  # app:
-  #   build: .
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - ./novels:/app/novels
-  #     - ./scripts:/app/scripts
-  #   environment:
-  #     WEAVIATE_URL: "http://192.168.1.11:8080"
-  #     LLM_URL: "http://192.168.1.11:5000"
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         memory: 4G
-
   weaviate-importer:
     image: weaviate-importer:latest
     build:
@@ -39,3 +24,14 @@ services:
           - driver: nvidia
             capabilities: ["gpu"]
             count: all
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "8001:8080"
+    volumes:
+      - ./webdata:/app/backend/data
+    # environment:
+    #   - OLLAMA_API_BASE=http://192.168.1.11:11434
+    restart: unless-stopped

@@ -6,6 +6,7 @@ from weaviate import WeaviateClient
 import os
 from dotenv import load_dotenv
 import logging
+from contextlib import asynccontextmanager
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -27,40 +28,65 @@ if not OLLAMA_BASE_URL or not WEAVIATE_URL:
     - WEAVIATE_URL must be set
     """)
 
-logger.info(f"Connecting to Ollama at {OLLAMA_BASE_URL}")
-logger.info(f"Connecting to Weaviate at {WEAVIATE_URL}")
 
-# Initialize Weaviate client (v4 syntax)
-WEAVIATE_GRPC_PORT = os.getenv("WEAVIATE_GRPC_PORT", "50051")  # Default gRPC port
-logger.info(f"Connecting to Weaviate gRPC Port {WEAVIATE_GRPC_PORT}")
+weaviate_client = None
+def weaviate_connect() -> WeaviateClient:
+    """
+    Ensures that the connection is established only once.
+    """    
+    try:
+        logger.info(f"Connecting to Weaviate")
 
-try:
-    weaviate_client = WeaviateClient(
-        connection_params=weaviate.connect.ConnectionParams.from_url(
-            url=WEAVIATE_URL,
-            grpc_port=WEAVIATE_GRPC_PORT  # Required in v4
-        )
-    )
-    client = weaviate_client.connect()
-    logger.info(f"Successfully connected to Weaviate at {WEAVIATE_URL} (gRPC: {WEAVIATE_GRPC_PORT})")
-except Exception as e:
-    logger.error(f"Weaviate connection failed: {str(e)}")
-    raise
-
-@app.on_event("startup")
-async def startup():
-    if not weaviate_client.is_ready():
-        raise RuntimeError("Weaviate connection not ready")
+        if client is None:
+            # Initialize the Weaviate client (this is just an example URL)
+            client = weaviate.connect_to_custom(
+                http_host=os.getenv("WEAVIATE_HTTP_HOST", "localhost"),
+                http_port=os.getenv("WEAVIATE_HTTP_PORT", "8080"),
+                http_secure=False,  # Use True for HTTPS
+                grpc_host=os.getenv("WEAVIATE_GRPC_HOST", "localhost"),
+                grpc_port=os.getenv("WEAVIATE_GRPC_PORT", "50051"),
+                grpc_secure=False  # Use True for secure gRPC
+            )
+            # Check if connection is ready
+            if client.is_ready():
+                logger.info(f"Successfully connected to Weaviate {client.get_meta()})")
+            else:
+                raise Exception("Weaviate connection is not ready.")
     
+    except Exception as e:
+        # Let all other exceptions propagate
+        logger.error(f"An error occurred: {str(e)}")
+        raise
+
+    return client
+
+async def startup():
+    global weaviate_client
+    weaviate_client = weaviate_connect()
+
     # Test Ollama connection
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    logger.info(f"Connecting to Ollama at {ollama_url}")
     try:
         async with httpx.AsyncClient() as test_client:
-            response = await test_client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            response = await test_client.get(f"{ollama_url}/api/tags")
             response.raise_for_status()
         logger.info("Successfully connected to Ollama")
     except Exception as e:
         logger.error(f"Ollama connection test failed: {str(e)}")
         raise
+
+def shutown():
+    if weaviate_client:
+        weaviate_client.close()
+    
+# Define a custom lifespan context manager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await startup()
+    yield
+    shutown()
+
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy(request: Request, path: str):
@@ -74,14 +100,6 @@ async def proxy(request: Request, path: str):
         logger.error(f"Error processing request: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# def insert_rag_context(messages, rag_context):
-#     # Find the index of the last user message (which is the last question)
-#     for i in range(len(messages) - 1, -1, -1):
-#         if messages[i]['role'] == 'user':
-#             # Insert RAG context just before the last user question
-#             messages.insert(i, {'role': 'assistant', 'content': rag_context})
-#             break
-#     return messages
 
 async def handle_rag_request(request: Request):
     data = await request.json()
@@ -90,11 +108,11 @@ async def handle_rag_request(request: Request):
     logger.info(f"[handle_rag_request]data: {data}")
     logger.info(f"[handle_rag_request]user_prompt: {orig_user_prompt}")
     try:
-        # results = client.collections.get("Document").query.near_text(
-        #     query=orig_user_prompt,
-        #     limit=3
-        # )
-        # context = "\n".join([obj.properties["content"] for obj in results.objects])
+        results = weaviate_client.collections.get("TextChunk").query.near_text(
+            query=orig_user_prompt,
+            limit=3
+        )
+        context = "\n".join([obj.properties["content"] for obj in results.objects])
         context = f"rag context"
         messages[-1]['content'] = f"根据以下文章内容回答问题：\n\n文章内容：{context}\n\n问题：{orig_user_prompt}\n答案："
         logger.info(f"[handle_rag_request]enhanced request:\n{data}")

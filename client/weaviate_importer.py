@@ -61,7 +61,7 @@ class WeaviateImporter:
             for i, chunk in enumerate(chunks):
                 try:
                     vector = self.encoder.encode(chunk)
-                    batch.add_data(
+                    batch.add_object(
                         collection="TextChunk",
                         properties={
                             "content": chunk,
@@ -95,7 +95,7 @@ def main():
             if client.is_ready():
                 logger.info(f"Successfully connected to Weaviate {client.get_meta()})")
             else:
-                raise
+                raise Exception("Weaviate connection is not ready.")
             # Initialize importer and setup schema (will only run if connection is successful)
             importer = WeaviateImporter(client, os.getenv("DATA_PATH", "./processed_data"))
             importer.setup_schema()
