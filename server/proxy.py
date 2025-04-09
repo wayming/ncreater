@@ -7,9 +7,12 @@ import os
 from dotenv import load_dotenv
 import logging
 from contextlib import asynccontextmanager
+from sentence_transformers import SentenceTransformer
+import traceback
 
 logger = None
 ollama_url = None
+encoder = None
 # Load environment variables
 load_dotenv()
 
@@ -65,6 +68,10 @@ async def startup():
     except Exception as e:
         logger.error(f"Ollama connection test failed: {str(e)}")
         raise
+    
+    global encoder
+    encoder = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2", device='cuda')
+
 
 def shutown():
     if weaviate_client:
@@ -95,24 +102,37 @@ async def proxy(request: Request, path: str):
 async def handle_rag_request(request: Request):
     data = await request.json()
     messages = data['messages']
-    orig_user_prompt = messages[-1]['content']
+    if not messages or 'content' not in messages[-1]:
+        raise HTTPException(status_code=400, detail="Invalid request format")
+
+    url = f"{ollama_url}/api/chat"
+    headers = dict(request.headers)
+    headers.pop("host", None)
+            
+    prompt = messages[-1]['content']
+    logger.info(f"[handle_rag_request]headers: {headers}")
     logger.info(f"[handle_rag_request]data: {data}")
-    logger.info(f"[handle_rag_request]user_prompt: {orig_user_prompt}")
+    logger.info(f"[handle_rag_request]user_prompt: {prompt}")
     try:
-        results = weaviate_client.collections.get("TextChunk").query.near_text(
-            query=orig_user_prompt,
+        prompt_vector = encoder.encode(prompt)
+        results = weaviate_client.collections.get("TextChunk").query.near_vector(
+            near_vector=prompt_vector.tolist(),
             limit=3
         )
-        context = "\n".join([obj.properties["content"] for obj in results.objects])
-        context = f"rag context"
-        messages[-1]['content'] = f"根据以下文章内容回答问题：\n\n文章内容：{context}\n\n问题：{orig_user_prompt}\n答案："
-        logger.info(f"[handle_rag_request]enhanced request:\n{data}")
-        async with httpx.AsyncClient() as http_client:
-            ollama_response = await http_client.post(
-                f"{ollama_url}/api/chat",
-                json=data,
-                timeout=60.0
-            )
+
+        if not results.objects:
+            context = "无相关文章内容。"
+        else:
+            context = "\n".join([obj.properties["content"] for obj in results.objects])
+
+        logger.info(f"[handle_rag_request]original message:\n{messages}")
+        new_messages = [*messages[:-1], {"role": "user", "content": f"根据文章内容回答：\n{context}\n问题：{prompt}"}]
+        logger.info(f"[handle_rag_request]new message:\n{new_messages}")
+        data['messages'] = new_messages
+        logger.info(f"[handle_rag_request]new data: {data}")
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as http_client:
+            ollama_response = await http_client.post(url, json=data)
             ollama_response.raise_for_status()
             
             async def chat_response():
@@ -121,7 +141,9 @@ async def handle_rag_request(request: Request):
                     
             return StreamingResponse(chat_response())
     except Exception as e:
-        logger.error(f"RAG processing failed: {str(e)}")
+        logger.error(f"RAG processing failed: {type(e)} {str(e)}")
+        logger.error(traceback.format_exc())
+        logger.error(f"Response body: {await e.response.text()}")  # Log the response body for more details
         raise
 
 async def forward_request(request: Request, path: str):

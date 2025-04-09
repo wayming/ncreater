@@ -45,7 +45,7 @@ services:
             count: all
     volumes:
       - /home/way/Workspace/ollama/models:/models
-    restart: always
+    restart: unless-stopped
     networks:
       - rag_network
 
@@ -68,6 +68,16 @@ services:
     networks:
       - rag_network
     restart: unless-stopped
+    volumes:
+    - .:/app
+    # command: python weaviate_importer.py
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            capabilities: ["gpu"]
+            count: all
   
 networks:
   rag_network:

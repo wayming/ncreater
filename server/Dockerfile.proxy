@@ -10,6 +10,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip cache purge
 
+RUN pip install --upgrade sentence-transformers
+RUN pip install --upgrade weaviate-client
+
 COPY proxy.py .
 # COPY healthcheck.sh /usr/local/bin/
 # RUN chmod +x /usr/local/bin/healthcheck.sh
@@ -19,8 +22,8 @@ COPY proxy.py .
 
 ENV PYTHONUNBUFFERED=1 \
     MAX_RETRIES=5 \
-    RETRY_DELAY=2
+    RETRY_DELAY=2 \
+    TRANSFORMERS_CACHE=/app/.cache
 
-USER 1001
-
-CMD ["sh", "-c", "for i in $(seq 1 $MAX_RETRIES); do gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 proxy:app && break || sleep $RETRY_DELAY; done"]
+USER root
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--reload", "proxy:app"]
