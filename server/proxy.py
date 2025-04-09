@@ -126,12 +126,12 @@ async def handle_rag_request(request: Request):
             context = "\n".join([obj.properties["content"] for obj in results.objects])
 
         logger.info(f"[handle_rag_request]original message:\n{messages}")
-        new_messages = [*messages[:-1], {"role": "user", "content": f"根据文章内容回答：\n{context}\n问题：{prompt}"}]
+        new_messages = [*messages[:-1], {"role": "user", "content": f"模拟下面文章人物回答问题，只要答案，不要分析过程：\n{context}\n问题：{prompt}"}]
         logger.info(f"[handle_rag_request]new message:\n{new_messages}")
         data['messages'] = new_messages
         logger.info(f"[handle_rag_request]new data: {data}")
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as http_client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as http_client:
             ollama_response = await http_client.post(url, json=data)
             ollama_response.raise_for_status()
             
