@@ -6,11 +6,11 @@ from weaviate.classes.config import Property, DataType
 from weaviate import WeaviateClient
 from sentence_transformers import SentenceTransformer
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 class WeaviateImporter:
     def __init__(self, client: WeaviateClient, data_path: str):
@@ -35,7 +35,6 @@ class WeaviateImporter:
         else:
             print("Collection 'TextChunk' already exists.")
 
-
     def import_data(self):
         # Get all JSON files in the directory
         json_files = [f for f in os.listdir(self.data_path) if f.endswith('.json')]
@@ -43,10 +42,20 @@ class WeaviateImporter:
         total_files = len(json_files)
         print(f"Found {total_files} JSON files in {self.data_path}. Starting import...")
 
-        for json_file in json_files:
-            json_file_path = os.path.join(self.data_path, json_file)
-            print(f"Processing file: {json_file_path}")
-            self.import_data_file(json_file_path)
+        # Use ThreadPoolExecutor to process files in parallel
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            futures = []
+            for json_file in json_files:
+                json_file_path = os.path.join(self.data_path, json_file)
+                print(f"Scheduling file: {json_file_path}")
+                futures.append(executor.submit(self.import_data_file, json_file_path))
+
+            # Wait for all futures to complete
+            for future in as_completed(futures):
+                try:
+                    future.result()  # If an exception was raised during processing, it will be re-raised here
+                except Exception as e:
+                    logger.error(f"Error during import: {str(e)}")
 
     def import_data_file(self, json_file: str):
         # Open and load the JSON file
@@ -78,6 +87,7 @@ class WeaviateImporter:
                 except Exception as e:
                     print(f"Error processing chunk {i} from {json_file}: {str(e)}")
                     continue
+
 def main():
     client = None
     try:

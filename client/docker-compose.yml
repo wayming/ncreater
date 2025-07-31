@@ -13,7 +13,7 @@ services:
       - WEAVIATE_GRPC_PORT=50051
       - DATA_PATH=/app/texts_processed
     volumes:
-      - ./texts_processed:/app/texts_processed
+      - /tmp/text_processed:/app/texts_processed
     # restart: on-failure
     command: tail -f /dev/null
     # command: python weaviate_importer.py

@@ -1,11 +1,11 @@
 import os
 import json
+import argparse
 from pathlib import Path
-from tqdm import tqdm
 import re
 
 class TextPreprocessor:
-    # Remve special characters
+    # Remove special characters
     # Return lines as a list
     def clean_text(self, lines: list[str]) -> list[str]:
         """Remove unwanted characters and normalize text"""
@@ -16,7 +16,6 @@ class TextPreprocessor:
             line = re.sub(r'[^\w\s，。！？、：；（）《》【】\n]', '', line)  # Remove special chars
             cleaned_lines.append(line)
         return cleaned_lines
-
 
     def sliding_window(self, lines: list[str], window_size=10, stride=5) -> list[str]:
         windows = []
@@ -46,8 +45,23 @@ def process_all_files(input_dir: str, output_dir: str):
                 json.dump(chunks, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
-    process_all_files(
-        input_dir="./texts_raw",
-        output_dir="./texts_processed"
+    # Set up the argument parser
+    parser = argparse.ArgumentParser(description="Process text files in a directory.")
+    parser.add_argument(
+        "--input_dir", 
+        type=str, 
+        required=True, 
+        help="Path to the input directory containing the text files"
     )
-    
+    parser.add_argument(
+        "--output_dir", 
+        type=str, 
+        required=True, 
+        help="Path to the output directory where processed files will be saved"
+    )
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    # Call the function to process the files
+    process_all_files(args.input_dir, args.output_dir)
